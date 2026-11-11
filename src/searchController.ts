@@ -1,7 +1,7 @@
-import { debounce } from './utils/debounce';
-import { searchCountries } from './api/searchCountries';
-import { HttpError } from './api/HttpError';
-import { mapCountryResponse, type CountryCard } from './api/mapCountryResponse';
+import { debounce } from './utils/debounce.js';
+import { searchCountries } from './api/searchCountries.js';
+import { HttpError } from './api/HttpError.js';
+import { mapCountryResponse, type CountryCard } from './api/mapCountryResponse.js';
 
 const DEBOUNCE_DELAY_MS = 300;
 const REQUEST_TIMEOUT_MS = 8000;

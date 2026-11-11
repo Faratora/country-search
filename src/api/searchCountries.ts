@@ -1,4 +1,4 @@
-import { HttpError } from './HttpError';
+import { HttpError } from './HttpError.js';
 
 const BASE_URL = 'https://countries.dev/name';
 
