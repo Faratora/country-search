@@ -284,4 +284,57 @@ describe('SearchController', () => {
     const secondError = states.filter((s) => s.status === 'error');
     expect(secondError.length).toBe(2);
   });
+
+  it('retry shows the loading indicator while the request is in flight', async () => {
+    let mode: 'fail' | 'hang' = 'fail';
+    let resolveFetch: ((value: unknown) => void) | undefined;
+
+    (fetch as ReturnType<typeof vi.fn>).mockImplementation(() => {
+      if (mode === 'fail') {
+        return Promise.resolve({ ok: false, status: 500 });
+      }
+      return new Promise((resolve) => {
+        resolveFetch = resolve;
+      });
+    });
+
+    const states: SearchState[] = [];
+    const controller = new SearchController((s) => states.push(s));
+
+    controller.updateQuery('flaky');
+    await vi.advanceTimersByTimeAsync(300);
+
+    expect(states[states.length - 1].status).toBe('error');
+
+    mode = 'hang';
+    states.length = 0;
+    controller.retry();
+
+    // Loading must appear immediately, not only after the response arrives.
+    expect(states[states.length - 1]).toEqual({ status: 'loading' });
+
+    // ...and the old error UI is gone while the request is still in flight.
+    expect(states.some((s) => s.status === 'error')).toBe(false);
+
+    // Finish the retried request.
+    resolveFetch?.({
+      ok: true,
+      status: 200,
+      json: async () => [{ name: 'Spain', population: 1 }],
+    });
+    await vi.advanceTimersByTimeAsync(0);
+
+    const finalState = states[states.length - 1];
+    expect(finalState.status).toBe('success');
+  });
+
+  it('retry does nothing when there is no previous query', () => {
+    const states: SearchState[] = [];
+    const controller = new SearchController((s) => states.push(s));
+
+    controller.retry();
+
+    expect(fetch).not.toHaveBeenCalled();
+    expect(states).toEqual([{ status: 'idle' }]);
+  });
 });

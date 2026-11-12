@@ -73,6 +73,12 @@ export class SearchController {
 
   retry(): void {
     if (this.lastQuery) {
+      // Drop a stale in-flight request from the previous attempt so its
+      // response can never race with the retried one.
+      this.controller?.abort();
+      this.controller = null;
+
+      this.setState({ status: 'loading' });
       void this.executeSearch(this.lastQuery);
     }
   }
