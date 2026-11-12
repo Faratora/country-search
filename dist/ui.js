@@ -1,4 +1,5 @@
 import { SearchController } from './searchController.js';
+import { getHistory, clearHistory } from './utils/cache.js';
 const STATUS_TEXT = {
     loading: 'Loading…',
     empty: 'Nothing found. Try another query.',
@@ -27,12 +28,49 @@ export function mountUi(root) {
     listEl.setAttribute('aria-label', 'Search results');
     const detailEl = el('section', 'detail');
     detailEl.hidden = true;
-    app.append(title, search, statusEl, listEl, detailEl);
+    // History section
+    const historySection = el('section', 'history');
+    const historyTitle = el('h3', 'history__title');
+    historyTitle.textContent = 'Recent searches';
+    const historyList = el('ul', 'history__list');
+    const historyClearBtn = el('button', 'history__clear');
+    historyClearBtn.type = 'button';
+    historyClearBtn.textContent = 'Clear history';
+    historySection.append(historyTitle, historyList, historyClearBtn);
+    app.append(title, search, statusEl, listEl, detailEl, historySection);
     root.append(app);
     const controller = new SearchController((state) => render(state));
     input.addEventListener('input', () => {
         controller.updateQuery(input.value);
     });
+    function renderHistory() {
+        const entries = getHistory();
+        historyList.replaceChildren();
+        if (entries.length === 0) {
+            historySection.hidden = true;
+            return;
+        }
+        historySection.hidden = false;
+        entries.forEach((entry) => {
+            const li = document.createElement('li');
+            li.className = 'history__item';
+            const btn = document.createElement('button');
+            btn.type = 'button';
+            btn.className = 'history__btn';
+            btn.textContent = entry.query;
+            btn.addEventListener('click', () => {
+                input.value = entry.query;
+                controller.updateQuery(entry.query);
+            });
+            li.append(btn);
+            historyList.append(li);
+        });
+    }
+    historyClearBtn.addEventListener('click', () => {
+        clearHistory();
+        renderHistory();
+    });
+    renderHistory();
     function render(state) {
         listEl.replaceChildren();
         statusEl.replaceChildren();
@@ -74,6 +112,7 @@ export function mountUi(root) {
                 state.countries.forEach((country) => {
                     listEl.append(buildCard(country, () => showDetail(country, state.countries)));
                 });
+                renderHistory();
                 return;
             }
         }

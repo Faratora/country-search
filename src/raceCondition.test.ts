@@ -1,5 +1,6 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { SearchController, type SearchState } from './searchController';
+import { resetCache } from './utils/cache.js';
 
 /**
  * Race-condition tests.
@@ -12,6 +13,7 @@ describe('Race condition', () => {
   beforeEach(() => {
     vi.useFakeTimers();
     vi.stubGlobal('fetch', vi.fn());
+    resetCache();
   });
 
   afterEach(() => {

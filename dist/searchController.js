@@ -2,6 +2,7 @@ import { debounce } from './utils/debounce.js';
 import { searchCountries } from './api/searchCountries.js';
 import { HttpError } from './api/HttpError.js';
 import { mapCountryResponse } from './api/mapCountryResponse.js';
+import { getCached, setCached, getCachedOrInflight, setInflight, clearInflight, addToHistory, } from './utils/cache.js';
 const DEBOUNCE_DELAY_MS = 300;
 const REQUEST_TIMEOUT_MS = 8000;
 export class SearchController {
@@ -29,6 +30,14 @@ export class SearchController {
             this.setState({ status: 'idle' });
             return;
         }
+        // Check cache first
+        const cached = getCached(query);
+        if (cached) {
+            this.lastQuery = query;
+            this.setState({ status: 'success', countries: cached.map((item) => mapCountryResponse(item)) });
+            addToHistory(query);
+            return;
+        }
         this.lastQuery = query;
         this.setState({ status: 'loading' });
         this.debouncedSearch(query);
@@ -39,6 +48,27 @@ export class SearchController {
         }
     }
     async executeSearch(query) {
+        // Deduplication: if an identical request is already in flight, reuse it.
+        const inflight = getCachedOrInflight(query);
+        if (inflight) {
+            try {
+                const raw = await inflight;
+                const countries = raw.map((item) => mapCountryResponse(item));
+                if (this.lastQuery === query) {
+                    if (countries.length === 0) {
+                        this.setState({ status: 'empty' });
+                    }
+                    else {
+                        this.setState({ status: 'success', countries });
+                    }
+                }
+                addToHistory(query);
+                return;
+            }
+            catch {
+                // If the in-flight promise failed, fall through to a fresh request
+            }
+        }
         // If a request is still in flight (e.g. debounce fired while one was
         // running) — cancel it before starting a new one.
         this.controller?.abort();
@@ -48,9 +78,17 @@ export class SearchController {
         const combinedSignal = typeof AbortSignal.any === 'function'
             ? AbortSignal.any([controller.signal, timeoutSignal])
             : controller.signal;
+        // Wrap the actual fetch in a promise we can deduplicate on
+        const fetchPromise = searchCountries(query, combinedSignal);
+        setInflight(query, fetchPromise);
         try {
-            const raw = await searchCountries(query, combinedSignal);
+            const raw = await fetchPromise;
             const countries = raw.map((item) => mapCountryResponse(item));
+            // Cache the raw result
+            setCached(query, raw);
+            addToHistory(query);
+            if (this.lastQuery !== query)
+                return;
             if (countries.length === 0) {
                 this.setState({ status: 'empty' });
             }
@@ -59,12 +97,13 @@ export class SearchController {
             }
         }
         catch (err) {
+            const errName = (err instanceof DOMException && err.name) || '';
             // Our own cancellation — must NOT be shown as an error.
-            if (err instanceof DOMException && err.name === 'AbortError') {
+            if (errName === 'AbortError') {
                 return;
             }
             // Real timeout — distinct from user cancellation.
-            if (err instanceof DOMException && err.name === 'TimeoutError') {
+            if (errName === 'TimeoutError') {
                 this.setState({
                     status: 'error',
                     message: 'Request timed out. Please try again.',
@@ -89,6 +128,7 @@ export class SearchController {
             });
         }
         finally {
+            clearInflight(query);
             if (this.controller === controller) {
                 this.controller = null;
             }
