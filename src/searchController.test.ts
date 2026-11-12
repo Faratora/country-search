@@ -235,6 +235,56 @@ describe('SearchController', () => {
     expect(lastState).toEqual({ status: 'idle' });
   });
 
+  it('timeout still works when AbortSignal.any is unavailable (fallback path)', async () => {
+    // Simulate an older engine without AbortSignal.any. The fallback must
+    // still compose the cancellation + timeout sources, so the request is
+    // aborted with a TimeoutError once REQUEST_TIMEOUT_MS elapses.
+    const originalAny = AbortSignal.any;
+    // @ts-expect-error deliberately removing the API for this test
+    AbortSignal.any = undefined;
+
+    try {
+      // Real-fetch-like mock: rejects with the signal's abort reason.
+      (fetch as ReturnType<typeof vi.fn>).mockImplementation(
+        (_url: string, init: RequestInit) =>
+          new Promise((_resolve, reject) => {
+            const signal = init.signal;
+            if (!signal) {
+              reject(new Error('No signal passed to fetch'));
+              return;
+            }
+            const onAbort = () => {
+              reject(signal.reason ?? new DOMException('Aborted', 'AbortError'));
+            };
+            if (signal.aborted) {
+              onAbort();
+              return;
+            }
+            signal.addEventListener('abort', onAbort, { once: true });
+          }),
+      );
+
+      const states: SearchState[] = [];
+      new SearchController((s) => states.push(s)).updateQuery('slow-fallback');
+
+      // Debounce fires, request goes out and hangs...
+      await vi.advanceTimersByTimeAsync(300);
+      expect(states[states.length - 1]).toEqual({ status: 'loading' });
+
+      // ...the fallback setTimeout aborts it with TimeoutError at 8000ms.
+      await vi.advanceTimersByTimeAsync(8000);
+
+      const errorState = states.find((s) => s.status === 'error');
+      expect(errorState).toBeTruthy();
+      if (errorState?.status === 'error') {
+        expect(errorState.message).toBe('Request timed out. Please try again.');
+        expect(errorState.query).toBe('slow-fallback');
+      }
+    } finally {
+      AbortSignal.any = originalAny;
+    }
+  });
+
   it('does not show error on AbortError (user cancellation)', async () => {
     const controller = new SearchController(() => {});
 

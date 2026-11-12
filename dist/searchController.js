@@ -5,6 +5,52 @@ import { mapCountryResponse } from './api/mapCountryResponse.js';
 import { getCached, setCached, getCachedOrInflight, setInflight, clearInflight, addToHistory, } from './utils/cache.js';
 const DEBOUNCE_DELAY_MS = 300;
 const REQUEST_TIMEOUT_MS = 8000;
+/**
+ * Combines the user-cancellation signal with a timeout source.
+ *
+ * Modern engines delegate to AbortSignal.any + AbortSignal.timeout.
+ * When AbortSignal.any is unavailable we compose both sources MANUALLY
+ * into a dedicated controller — the timeout keeps working via a plain
+ * setTimeout that aborts with a TimeoutError DOMException, exactly like
+ * AbortSignal.timeout would. `dispose()` detaches listeners and clears
+ * the timer so finished requests leave no residue.
+ */
+function combineSignalsWithTimeout(cancelSignal, timeoutMs) {
+    if (typeof AbortSignal.any === 'function' && typeof AbortSignal.timeout === 'function') {
+        return {
+            signal: AbortSignal.any([cancelSignal, AbortSignal.timeout(timeoutMs)]),
+            dispose: () => { },
+        };
+    }
+    const combined = new AbortController();
+    let disposed = false;
+    const dispose = () => {
+        if (disposed)
+            return;
+        disposed = true;
+        clearTimeout(timer);
+        cancelSignal.removeEventListener('abort', onUserAbort);
+    };
+    const timer = setTimeout(() => {
+        if (!combined.signal.aborted) {
+            combined.abort(new DOMException('The operation timed out.', 'TimeoutError'));
+        }
+        dispose();
+    }, timeoutMs);
+    const onUserAbort = () => {
+        if (!combined.signal.aborted) {
+            combined.abort(cancelSignal.reason);
+        }
+        dispose();
+    };
+    if (cancelSignal.aborted) {
+        onUserAbort();
+    }
+    else {
+        cancelSignal.addEventListener('abort', onUserAbort, { once: true });
+    }
+    return { signal: combined.signal, dispose };
+}
 export class SearchController {
     constructor(onStateChange) {
         this.controller = null;
@@ -83,10 +129,7 @@ export class SearchController {
         this.controller?.abort();
         const controller = new AbortController();
         this.controller = controller;
-        const timeoutSignal = AbortSignal.timeout(REQUEST_TIMEOUT_MS);
-        const combinedSignal = typeof AbortSignal.any === 'function'
-            ? AbortSignal.any([controller.signal, timeoutSignal])
-            : controller.signal;
+        const { signal: combinedSignal, dispose } = combineSignalsWithTimeout(controller.signal, REQUEST_TIMEOUT_MS);
         // Wrap the actual fetch in a promise we can deduplicate on
         const fetchPromise = searchCountries(query, combinedSignal);
         setInflight(query, fetchPromise);
@@ -137,6 +180,7 @@ export class SearchController {
             });
         }
         finally {
+            dispose();
             clearInflight(query);
             if (this.controller === controller) {
                 this.controller = null;
