@@ -59,14 +59,25 @@
 const controller = new AbortController();
 this.controller = controller;
 
-const timeoutSignal = AbortSignal.timeout(8000);
-const combinedSignal = AbortSignal.any([controller.signal, timeoutSignal]);
+const { signal: combinedSignal, dispose } = combineSignalsWithTimeout(
+  controller.signal,
+  REQUEST_TIMEOUT_MS,
+);
 ```
 
 Это позволяет одновременно:
 
 - отменять запрос при каждом новом вводе пользователя;
 - отменять запрос при истечении 8 секунд ожидания.
+
+В современных движках `combineSignalsWithTimeout` делегирует
+`AbortSignal.any([cancelSignal, AbortSignal.timeout(ms)])`. Если
+`AbortSignal.any` недоступен, оба источника компонуются вручную:
+собственный `AbortController`, который abort'ится либо по сигналу
+пользователя (с его `reason`), либо по `setTimeout` с
+`DOMException('TimeoutError')`. Таким образом таймаут работает на
+любом движке. `dispose()` в `finally` снимает слушатели и сбрасывает
+таймер.
 
 ## 2. Debounce
 
@@ -116,17 +127,41 @@ const combinedSignal = AbortSignal.any([controller.signal, timeoutSignal]);
 **Итог:** O(n), где n — количество языков/валют в ответе. В среднем
 постоянная величина ≤ 10, поэтому на практике O(1).
 
-### Кэш (если реализован) — O(1)
+### Кэш и дедупликация — O(1)
 
-Для кэширования используется `Map<string, Promise<unknown[]>>`:
+Реализованы в `src/utils/cache.ts`, интегрированы в `SearchController`.
 
-- `get(query)`: O(1) — хэш-поиск по ключу
-- `set(query, promise)`: O(1) — добавление в Map
-- `delete(query)`: O(1) — удаление по ключу
+**Кэш результатов по строке запроса** — `Map<string, CachedResult>`,
+синхронизированный с `localStorage` (ключ `country-search-cache`, TTL
+5 минут, максимум 100 записей):
 
-Дедупликация одновременных одинаковых запросов тоже O(1): если промис уже
-в кэше, новый вызов возвращает существующий промис без создания нового
-`AbortController`.
+- `getCached(query)`: O(1) — хэш-поиск по ключу;
+- `setCached(query, raw)`: O(1) — добавление в Map;
+- очистка протухших записей: O(n) при загрузке, n = размер кэша.
+
+При попадании в кэш `updateQuery()` показывает результат мгновенно,
+не дожидаясь debounce и не обращаясь к API.
+
+**Дедупликация одинаковых запросов «в полёте»** —
+`Map<string, Promise<unknown[]>>`:
+
+- `getCachedOrInflight(query)`: O(1);
+- если промис уже в карте, новый вызов ждёт существующий промис
+  вместо создания нового `AbortController` и нового `fetch`.
+
+**История поиска** — последние 10 уникальных запросов в `localStorage`
+(ключ `country-search-history`, newest-first, регистронезависимая
+дедупликация):
+
+- `addToHistory(query)`: O(n) из-за линейного поиска дубликата, n ≤ 10 —
+  фактически O(1);
+- рендерится в UI как чипы-кнопки («Recent searches»); клик по чипу
+  подставляет запрос в поле и запускает поиск (обычно из кэша — без сети);
+- `clearHistory()` — кнопка «Clear history».
+
+Все операции с `localStorage` обёрнуты в `try/catch`: переполнение
+хранилища или его недоступность (приватный режим браузера) не ломают
+поиск — приложения деградирует до работы без кэша и истории.
 
 ## 4. Принципы чистого кода
 
@@ -147,7 +182,8 @@ const combinedSignal = AbortSignal.any([controller.signal, timeoutSignal]);
 
 | Модуль                     | Отвечает за                                    |
 | -------------------------- | --------------------------------------------- |
-| `debounce`                 | Задержка вызовов                               |
+| `debounce`                 | Задержка вызовов + отмена отложенного вызова   |
+| `cache`                    | Кэш результатов, дедупликация, история (localStorage) |
 | `searchCountries`          | HTTP-запрос + разбор статусов                  |
 | `HttpError`                | Типизация HTTP-ошибок                          |
 | `mapCountryResponse`       | Преобразование сырых данных API в UI-формат    |
