@@ -204,6 +204,37 @@ describe('SearchController', () => {
     expect(cancelStates[cancelStates.length - 1]).toEqual({ status: 'idle' });
   });
 
+  it('regression: clearing the field during debounce does NOT send a request', async () => {
+    const queriesFetched: string[] = [];
+
+    (fetch as ReturnType<typeof vi.fn>).mockImplementation((url: string) => {
+      const query = url.split('/').pop()!;
+      queriesFetched.push(query);
+      return Promise.resolve({
+        ok: true,
+        status: 200,
+        json: async () => [{ name: 'France', population: 67000000 }],
+      });
+    });
+
+    const states: SearchState[] = [];
+    const controller = new SearchController((s) => states.push(s));
+
+    // t=0: user types 'sp'
+    controller.updateQuery('sp');
+
+    // t=100: user clears the field (BEFORE the 300ms debounce fires)
+    await vi.advanceTimersByTimeAsync(100);
+    controller.updateQuery('');
+
+    // t=400: debounce WOULD have fired at t=300 if not cancelled
+    await vi.advanceTimersByTimeAsync(300);
+
+    expect(queriesFetched).toEqual([]);
+    const lastState = states[states.length - 1];
+    expect(lastState).toEqual({ status: 'idle' });
+  });
+
   it('does not show error on AbortError (user cancellation)', async () => {
     const controller = new SearchController(() => {});
 
