@@ -26,6 +26,7 @@ export class SearchController {
         this.controller?.abort();
         this.controller = null;
         if (query.trim() === '') {
+            this.debouncedSearch.cancel();
             this.lastQuery = '';
             this.setState({ status: 'idle' });
             return;
@@ -34,13 +35,16 @@ export class SearchController {
         const cached = getCached(query);
         if (cached) {
             this.lastQuery = query;
-            this.setState({ status: 'success', countries: cached.map((item) => mapCountryResponse(item)) });
+            this.setState({
+                status: 'success',
+                countries: cached.map((item) => mapCountryResponse(item)),
+            });
             addToHistory(query);
             return;
         }
         this.lastQuery = query;
         this.setState({ status: 'loading' });
-        this.debouncedSearch(query);
+        this.debouncedSearch.fn(query);
     }
     retry() {
         if (this.lastQuery) {

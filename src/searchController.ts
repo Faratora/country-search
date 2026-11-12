@@ -26,7 +26,7 @@ export class SearchController {
   private lastQuery = '';
   private state: SearchState = { status: 'idle' };
   private readonly onStateChange: (state: SearchState) => void;
-  private readonly debouncedSearch: (q: string) => void;
+  private readonly debouncedSearch: { fn: (q: string) => void; cancel: () => void };
 
   constructor(onStateChange: (state: SearchState) => void) {
     this.onStateChange = onStateChange;
@@ -48,6 +48,7 @@ export class SearchController {
     this.controller = null;
 
     if (query.trim() === '') {
+      this.debouncedSearch.cancel();
       this.lastQuery = '';
       this.setState({ status: 'idle' });
       return;
@@ -67,7 +68,7 @@ export class SearchController {
 
     this.lastQuery = query;
     this.setState({ status: 'loading' });
-    this.debouncedSearch(query);
+    this.debouncedSearch.fn(query);
   }
 
   retry(): void {

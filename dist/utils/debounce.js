@@ -1,6 +1,6 @@
 export function debounce(fn, delay) {
     let timerId = null;
-    return (...args) => {
+    const scheduled = (...args) => {
         if (timerId !== null) {
             clearTimeout(timerId);
         }
@@ -9,4 +9,11 @@ export function debounce(fn, delay) {
             timerId = null;
         }, delay);
     };
+    const cancel = () => {
+        if (timerId !== null) {
+            clearTimeout(timerId);
+            timerId = null;
+        }
+    };
+    return { fn: scheduled, cancel };
 }

@@ -7,7 +7,7 @@ describe('debounce', () => {
 
   it('calls fn only after delay', () => {
     const fn = vi.fn();
-    const debounced = debounce(fn, 300);
+    const { fn: debounced } = debounce(fn, 300);
 
     debounced();
 
@@ -20,7 +20,7 @@ describe('debounce', () => {
 
   it('resets timer on repeated calls', () => {
     const fn = vi.fn();
-    const debounced = debounce(fn, 300);
+    const { fn: debounced } = debounce(fn, 300);
 
     debounced();
     vi.advanceTimersByTime(200);
@@ -36,7 +36,7 @@ describe('debounce', () => {
 
   it('passes the latest arguments to fn', () => {
     const fn = vi.fn();
-    const debounced = debounce(fn, 300);
+    const { fn: debounced } = debounce(fn, 300);
 
     debounced('a');
     debounced('b');
@@ -50,7 +50,7 @@ describe('debounce', () => {
 
   it('supports multiple arguments', () => {
     const fn = vi.fn();
-    const debounced = debounce(fn, 100);
+    const { fn: debounced } = debounce(fn, 100);
 
     debounced('x', 42, true);
 
@@ -61,7 +61,7 @@ describe('debounce', () => {
 
   it('does not call fn again after the delay elapsed without new calls', () => {
     const fn = vi.fn();
-    const debounced = debounce(fn, 200);
+    const { fn: debounced } = debounce(fn, 200);
 
     debounced();
     vi.advanceTimersByTime(200);
@@ -73,8 +73,8 @@ describe('debounce', () => {
   it('each debounced function keeps its own timer', () => {
     const fn1 = vi.fn();
     const fn2 = vi.fn();
-    const debounced1 = debounce(fn1, 100);
-    const debounced2 = debounce(fn2, 300);
+    const { fn: debounced1 } = debounce(fn1, 100);
+    const { fn: debounced2 } = debounce(fn2, 300);
 
     debounced1();
     debounced2();
@@ -85,5 +85,17 @@ describe('debounce', () => {
 
     vi.advanceTimersByTime(200);
     expect(fn2).toHaveBeenCalledTimes(1);
+  });
+
+  it('cancel prevents the pending call', () => {
+    const fn = vi.fn();
+    const { fn: debounced, cancel } = debounce(fn, 300);
+
+    debounced('test');
+    cancel();
+
+    vi.advanceTimersByTime(500);
+
+    expect(fn).not.toHaveBeenCalled();
   });
 });
