@@ -9,6 +9,10 @@ Live country search application powered by [countries.dev](https://countries.dev
 - HTTP error handling with retry support
 - Detailed country view on click
 
+## Demo
+
+[https://faratora.github.io/country-search/](https://faratora.github.io/country-search/)
+
 ## Branches
 
 - `main` — stable branch
