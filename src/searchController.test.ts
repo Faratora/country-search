@@ -94,6 +94,34 @@ describe('SearchController', () => {
     expect(emptyState).toBeTruthy();
   });
 
+  it('keeps the empty state when an empty result is served from the cache', async () => {
+    (fetch as ReturnType<typeof vi.fn>).mockResolvedValue({
+      ok: false,
+      status: 404,
+    });
+
+    const states: SearchState[] = [];
+    const controller = new SearchController((s) => states.push(s));
+
+    // First empty query goes to the network and caches [].
+    controller.updateQuery('first-empty');
+    await vi.advanceTimersByTimeAsync(300);
+    expect(states[states.length - 1]).toEqual({ status: 'empty' });
+
+    // Another query populates the cache with a different entry.
+    controller.updateQuery('second-empty');
+    await vi.advanceTimersByTimeAsync(300);
+    expect(states[states.length - 1]).toEqual({ status: 'empty' });
+
+    // The third query is served from the cache. [] must still mean
+    // "nothing found", not "success with zero results".
+    controller.updateQuery('first-empty');
+    await vi.advanceTimersByTimeAsync(0);
+
+    expect(states[states.length - 1]).toEqual({ status: 'empty' });
+    expect(fetch).toHaveBeenCalledTimes(2);
+  });
+
   it('sets error state on HttpError (500)', async () => {
     (fetch as ReturnType<typeof vi.fn>).mockResolvedValue({
       ok: false,
