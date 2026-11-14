@@ -111,11 +111,11 @@ export class SearchController {
     // Check cache first
     const cached = getCached(query);
     if (cached) {
+      const countries = cached.map((item) => mapCountryResponse(item as Record<string, unknown>));
       this.lastQuery = query;
-      this.setState({
-        status: 'success',
-        countries: cached.map((item) => mapCountryResponse(item as Record<string, unknown>)),
-      });
+      this.setState(
+        countries.length === 0 ? { status: 'empty' } : { status: 'success', countries },
+      );
       addToHistory(query);
       return;
     }
