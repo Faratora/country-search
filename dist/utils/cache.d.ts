@@ -2,12 +2,12 @@
  * In-memory cache with TTL, deduplication and localStorage history.
  */
 export interface CachedResult {
-  countries: unknown[];
-  timestamp: number;
+    countries: unknown[];
+    timestamp: number;
 }
 export type HistoryEntry = {
-  query: string;
-  timestamp: number;
+    query: string;
+    timestamp: number;
 };
 export declare function getCached(query: string): unknown[] | null;
 export declare function setCached(query: string, countries: unknown[]): void;

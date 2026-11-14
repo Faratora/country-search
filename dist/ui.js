@@ -4,6 +4,26 @@ const STATUS_TEXT = {
     loading: 'Loading…',
     empty: 'Nothing found. Try another query.',
 };
+/* ── Flag rendering ─────────────────────────────────── */
+/**
+ * Renders the country flag as an `<img>` when a URL is available (most
+ * platforms can't render the flag emoji — Windows, for instance), falling
+ * back to the emoji span when the API didn't supply a flag image.
+ */
+function renderFlag(country) {
+    if (country.flagUrl) {
+        const img = document.createElement('img');
+        img.className = 'card__flag-img';
+        img.alt = ''; // decorative — the name is already shown in the card
+        img.loading = 'lazy';
+        img.src = country.flagUrl;
+        return img;
+    }
+    const span = el('span', 'card__flag');
+    span.textContent = country.flag;
+    span.setAttribute('aria-hidden', 'true');
+    return span;
+}
 /**
  * Builds and mounts the whole UI into `root`.
  * Dynamic content is created exclusively with createElement/textContent —
@@ -131,10 +151,8 @@ export function mountUi(root) {
             render(controller.getState());
         });
         const heading = el('h2', 'detail__title');
-        const flag = el('span', 'detail__flag');
-        flag.textContent = country.flag;
-        flag.setAttribute('aria-hidden', 'true');
-        heading.append(flag, document.createTextNode(country.name));
+        const flagEl = renderFlag(country);
+        heading.append(flagEl, document.createTextNode(country.name));
         const grid = el('dl', 'detail__grid');
         const rows = [
             ['Capital', country.capital || 'N/A'],
@@ -178,9 +196,7 @@ function buildCard(country, onOpen) {
     li.tabIndex = 0;
     li.setAttribute('role', 'button');
     li.setAttribute('aria-label', `${country.name}, ${country.capital}`);
-    const flag = el('span', 'card__flag');
-    flag.textContent = country.flag;
-    flag.setAttribute('aria-hidden', 'true');
+    const flag = renderFlag(country);
     const body = el('div', 'card__body');
     const name = el('span', 'card__name');
     name.textContent = country.name;

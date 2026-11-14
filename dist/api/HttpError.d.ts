@@ -1,4 +1,4 @@
 export declare class HttpError extends Error {
-  status: number;
-  constructor(status: number, message?: string);
+    status: number;
+    constructor(status: number, message?: string);
 }
